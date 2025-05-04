@@ -1,77 +1,91 @@
 Sonatype Nexus Installation
-
-
 Pre-requisite
-AWS Account.
-Create Redhat EC2 t2.medium Instance with 4GB RAM.
-Create Security Group and open Required ports. 8081
+Create Redhat EC2 t2. medium Instance with 4GB RAM.
+Create Security Group and open Required ports. 8081( For demo use All Traffic)
 Attach Security Group to EC2 Instance.
-Install java openJDK 1.8+ for Nexus version 3.15
-
-
+Install java OpenJDK 1.8+ for Nexus version 3.15
 # Step1
-#As a good security practice, Nexus thus not advised to run nexus service as a root user,
-# so create a new user called nexus and grant sudo access to manage nexus services as follows.
-          sudo hostnamectl set-hostname nexus
-          sudo useradd nexus
+# If you run the command hostname it is going to give you ip-172-31-13-222.us-east-2.compute.internal
+#If you run the command whoami the output will be ec2-user. Thus ec2-user is the user trying to run the script.
+#As a good security practice, it is not advised to run Nexus service as a root user
+# So, create a new user called nexus and grant sudo access to manage nexus services.
+# Also set the time zone for the sonar server
+sudo timedatectl set-timezone "America/Chicago"
+sudo hostnamectl set-hostname nexus
+#Now if you run the command hostname you should get nexus
+#Now to add the user nexus run the command
+sudo useradd nexus
 # Grant sudo access to nexus user
-          sudo echo "nexus ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/nexus
-          sudo su - nexus
-
-
-# Step2 (Install Java as a pre-requisit for nexus and other software)
+sudo echo "nexus ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/nexus
+#Now switch to the nexus user by running the command
+sudo su - nexus
+# Step2 (Install Java as a pre-requisite for nexus and other software)
 # It is advised that all installations/downloads should be done in the opt directory
 cd /opt
-sudo yum install wget git unzip -y
+sudo yum install wget vim git unzip -y
 sudo yum install java-11-openjdk-devel java-1.8.0-openjdk-devel -y
 
-
 # Step3 (Download nexus software and extract it (unzip)
-______________Uses this new code___________________________________
-sudo wget -O nexus.tar.gz https://download.sonatype.com/nexus/3/latest-unix.tar.gz
-sudo tar -xvf nexus.tar.gz
-sudo mv nexus-3* nexus
-________________New code ends here________________
 sudo wget http://download.sonatype.com/nexus/3/nexus-3.15.2-01-unix.tar.gz
 sudo tar -zxvf nexus-3.15.2-01-unix.tar.gz
-sudo mv /opt/nexus-3.15.2-01 /opt/nexus
-sudo rm -rf nexus-3.15.2-01-unix.tar.gz
+Here's a breakdown of the above command:
 
+sudo: This stands for "superuser do" and allows a permitted user to execute a command as the superuser (root) or another user, as specified by the security policy. It is often required for commands that need elevated privileges.
+
+tar: This is a command-line utility that stands for "tape archive." It is used to create, maintain, modify, and extract files from an archive file.
+
+-z: This option tells tar to decompress the archive using gzip. It is used for archives that have a .tar.gz or .tgz extension.
+
+-x: This option stands for "extract," telling tar to extract the contents of the archive.
+
+-v: This stands for "verbose," which means that tar will print the names of the files being processed to the terminal as it extracts them.
+
+-f: This option indicates that the next argument will be the name of the archive file to operate on.
+#Now remove the tar file by running the command
+sudo rm -rf nexus-3.15.2-01-unix.tar.gz
+sudo mv nexus-3.15.2-01 /opt/nexus
 
 # Step4 (Grant permissions for nexus user to start and manage nexus service)
+Now run the command ls a then ll 
+You should get the directories nexus and sonatype-work 
+# Now, who owns the above two files is the root user, not nexus user. 
+# So, we are going to change the ownership to nexus and the file permissions
 # Change the owner and group permissions to /opt/nexus and /opt/sonatype-work directories.
 sudo chown -R nexus:nexus /opt/nexus
 sudo chown -R nexus:nexus /opt/sonatype-work
 sudo chmod -R 775 /opt/nexus
 sudo chmod -R 775 /opt/sonatype-work
+#Now if you run the command ll, you will see that nexus owns the file
+#Step5 
+To ensure that nexus is run as the nexus user Open /opt/nexus/bin/nexus.rc file and uncomment run_as_user parameter and set as nexus user. There are two options to do this. 
+Option 1
+To run as user nexus, sudo vim /opt/nexus/bin/nexus.rc     
+You will note that it is listed as #run_as_user=""
+Remove the #
+Then between the “ ”you can input the name of the desired user(nexus).
 
-#Step5 (Open /opt/nexus/bin/nexus.rc file and uncomment run_as_user parameter and set as nexus user.
-# To run as user nexus
-# If you vim /opt/nexus/bin/nexus.rc     you will note that it is = #run_as_user=""
-# Remove the #
-# Between the “ ” you can input the name of the desired user.
-# You can use the CLI to change from #run_as_user="" to run_as_user="nexus"  by using the command below.
+Option 2
+# You may also decide to use the CLI to change from #run_as_user="" to run_as_user="nexus” by using the command: -
+echo run_as_user="nexus" > /opt/nexus/bin/nexus.rc
+#Now vim /opt/nexus/bin/nexus.rc  to see the user name changed to nexus
 
-echo  'run_as_user="nexus" ' > /opt/nexus/bin/nexus.rc
-
-# Now vim /opt/nexus/bin/nexus.rc  to see the user name change
+#Step6
+Start the nexus service:
+sh /opt/nexus/bin/nexus start
+Check the nexus service status:
+sh /opt/nexus/bin/nexus status
 
 
 #Step6 (CONFIGURE NEXUS TO RUN AS A SERVICE)
+Now if you run the command sudo systemctl start nexus the result will be a fail because nexus has not been configured as a service. To configure it, we need to create a symbolic link to start nexus.
 sudo ln -s /opt/nexus/bin/nexus /etc/init.d/nexus
 
-
-#Step7 (Enable and start the nexus as a services)
-#To start nexus you need to run the command sudo systemctl start sshd
-# But note that sshd is not the name for nexus. If you run the command sudo systemctl start nexus, its going to Fail because it does not recognize that name(Failed to start nexus.service: Unit nexus.service not found.)
-# If you ls you will get: nexus sonatype-work.
-# If you ls nexus you will see the bin directory, if you ls nexus/bin you will get nexus,
-# If you ll nexus/bin/nexus you will see that nexus has the admin permissions rwxrwxr-x.
-# Now to check the contents of the file vim  nexus/bin/nexus
-# Now to enable nexus service
+# Now to enable Nexus service
 sudo systemctl enable nexus
+# To start nexus
 sudo systemctl start nexus
 # To check if Nexus is running
 sudo systemctl status nexus
-echo "end of nexus installation"
+
+
 
